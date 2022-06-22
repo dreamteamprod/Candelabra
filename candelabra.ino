@@ -39,6 +39,9 @@ uint32_t DMX_UNIVERSE = 1;  // 0 - 15
 const IPAddress IPADDRESS(192, 168, 2, 222);
 uint8_t MACADDRESS[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xAB};
 
+// PWM Candle LED Output Pins # Missing pin 10 for ethernet
+const int PWM_PINS[] = {2,3,4,5,6,7,8,9,11,12,13,44,45,46};
+
 // Ethernet Chip Select Pin
 const int ETHERNET_CS_PIN = 10;
 
@@ -114,7 +117,7 @@ void setup() {
     // Set the PWM outputs we are using as outputs.
     // PWM outputs are 2 -> 13 (11 channels)
     for (int i = 0; i<CHANNEL_COUNT; i++) {
-      pinMode(2+i, OUTPUT);
+      pinMode(PWM_PINS[i], OUTPUT);
     }
 
     // Fill up the flicker pattern buffer, index 0 is left full, for static intensity.
@@ -191,9 +194,9 @@ void loop() {
 
   // Update the PWM outputs to their current brightness value.
   for (int channel = 0; channel<CHANNEL_COUNT; channel++) {
-    //analogWrite(2+channel, intensity[channel]); # Just intensity
-    //analogWrite(2+channel, flicker[flicker_index[channel]]); # Just flicker
-    analogWrite(2+channel, float(flicker[flicker_index[channel]])*(float(intensity[channel]))/255);
+    //analogWrite(PWM_PINS[channel], intensity[channel]); # Just intensity
+    //analogWrite(PWM_PINS[channel], flicker[flicker_index[channel]]); # Just flicker
+    analogWrite(PWM_PINS[channel], float(flicker[flicker_index[channel]])*(float(intensity[channel]))/255);
   }
 
   //delay(random(100));
