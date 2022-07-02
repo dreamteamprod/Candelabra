@@ -49,7 +49,8 @@ const int RELAY_FOGGER_PINS[] = {36,37};
 // Ethernet Chip Select Pin
 const int ETHERNET_CS_PIN = 53;//10;
 
-
+//const long long FLICKER_FADE_CYCLES = 100000;
+const float FLICKER_FADE_MS = 100;
 
 // OTHER GLOBALS
 
@@ -59,6 +60,8 @@ int flicker_speed_millis[CHANNEL_COUNT];
 
 // MCU time that each candle last changed flicker state.
 long long flicker_last_tick[CHANNEL_COUNT];
+
+uint8_t flicker_last_pwm_out[CHANNEL_COUNT];
 
 // How far through the flicker pattern each candle is.
 int flicker_index[CHANNEL_COUNT];
@@ -90,6 +93,10 @@ uint8_t flicker[300] = {255};
 
 ArtnetReceiver artnet;
 
+void set_channel_pwm(int channel, uint8_t value) {
+  flicker_last_pwm_out[channel] = value;
+  analogWrite(PWM_PINS[channel], value);
+}
 
 void setup() {
     // Set the PWM outputs we are using as outputs.
@@ -191,10 +198,10 @@ void decode_dmx() {
    Serial.println((fogger_channel_index+1));
    Serial.print("Fogger Value: ");
    Serial.println(fogger_channel_value);
-   if (fogger_channel_value > 200) {
+   if (fogger_channel_value >= 200) {
     relay_fogger_state[1] = true; // Take the 9V PSU - High Smoke
     relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
-   } else if (fogger_channel_value > 100) {
+   } else if (fogger_channel_value >= 100) {
     relay_fogger_state[1] = false; // Take the 5V PSU - Medium smoke
     relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
    } else {
@@ -233,21 +240,46 @@ void loop() {
   for (int channel = 0; channel<CHANNEL_COUNT; channel++) {
     //analogWrite(PWM_PINS[channel], intensity[channel]); # Just intensity
     //analogWrite(PWM_PINS[channel], flicker[flicker_index[channel]]); # Just flicker
-    analogWrite(PWM_PINS[channel], float(flicker[flicker_index[channel]])*(float(intensity[channel]))/255);
+    
+    int next_flicker_index = flicker_index[channel];
+    uint8_t next_flicker_value = flicker[next_flicker_index];
+
+    uint8_t current_pwm_out = flicker_last_pwm_out[channel];
+
+    uint8_t new_pwm_out = float(next_flicker_value)*(float(intensity[channel]))/255;
+    
+    if (current_pwm_out == new_pwm_out) {
+      continue;
+    }
+    
+    if (abs(current_pwm_out - new_pwm_out) > 20 && FLICKER_FADE_MS > 0) {
+      //int last_flicker_index = max(0,flicker_index[channel]-1);
+      //uint8_t last_flicker_value = flicker[last_flicker_index];
+      
+      int modifier = 1;
+      if (current_pwm_out > new_pwm_out) {
+        modifier = -1;
+      }
+      while(current_pwm_out != new_pwm_out) {
+        //long long wait_cycles = FLICKER_FADE_CYCLES;
+        //while (wait_cycles > 0) {
+        //  wait_cycles--;
+        //}
+        delayMicroseconds(FLICKER_FADE_MS);
+        //Serial.println("Flicker fading");
+        current_pwm_out = current_pwm_out + modifier;
+        //Serial.print(current_pwm_out);
+        //Serial.print(" / ");
+        //Serial.println(new_pwm_out);
+        set_channel_pwm(channel, current_pwm_out);
+        //analogWrite(PWM_PINS[channel], float(last_flicker_value)*(float(intensity[channel]))/255);
+      }
+      //Serial.println("Flicker fade done.");
+    }
+    set_channel_pwm(channel, new_pwm_out);
+    //analogWrite(PWM_PINS[channel], float(next_flicker_value)*(float(intensity[channel]))/255);
     digitalWrite(RELAY_PINS[channel], !relay_state[channel]);
-    //if (intensity[channel] == 0) {
-    //  Serial.print(PWM_PINS[channel]);
-    //  Serial.println(" now input");
-    //    digitalWrite(PWM_PINS[channel], 1);
-    //} else {
-    //  pinMode(PWM_PINS[channel], OUTPUT);
-    //  digitalWrite(PWM_PINS[channel], 0);
-    //    digitalWrite(PWM_PINS[channel], 0);
-    //}
   }
   digitalWrite(RELAY_FOGGER_PINS[0], !relay_fogger_state[0]);
   digitalWrite(RELAY_FOGGER_PINS[1], !relay_fogger_state[1]);
-  
-
-  //delay(random(100));
 }
