@@ -1,7 +1,5 @@
 // Candelabra
-// A project to provide a ART-NET DMX controlled LED candle dimmer with adjustable intensity and built-in flicker effect speed.
-
-// TODO: Change to support abitrary pins, so that more channels can work. Currently pin 10 used for ethernet.
+// A project to provide a ArtNet DMX controlled LED candle dimmer with adjustable intensity and built-in flicker effect speed.
 
 // Currently this project assumes a Mega 2560 due to higher PWM output count.
 
@@ -23,7 +21,7 @@ const int CHANNEL_COUNT = 14;
 
 // How flickery do you want it?
 // Larger the number, the more the maximum reduction in brightness the flicker can have.
-const uint8_t FLICKER_MAGNITUDE = 200; // 0-255
+const uint8_t FLICKER_MAGNITUDE = 180; // 0-255
 
 // Max number of DMX addresses supported.
 const int DMX_UNIVERSE_SIZE = 512;
@@ -44,6 +42,8 @@ const int PWM_PINS[] = {2,3,4,5,6,7,8,9,10,11,12,13,44,45,46,47};
 // Note CHANNEL_COUNT set to 14 above, 36/37 are reused for fogger.
 const int RELAY_PINS[] = {22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37};
 
+// To support an old Martin Fogger with voltage control, we have a relay ladder connected to 3 power supply voltages.
+const bool ENABLE_FOGGER = true;
 const int RELAY_FOGGER_PINS[] = {36,37};
 
 // Ethernet Chip Select Pin
@@ -85,25 +85,36 @@ const int DMX_START_INDEX = DMX_START_ADDR - 1;
 // 255 dmx channel speeds * 4 for not having it crazy fast.
 const int flicker_max_duration = 255 * 4;
 
-// Array of flicker PWM values, default all to full intensity. Index 0 will always be 255, for static (no flicker).
-uint8_t flicker[300] = {255};
+// Array of flicker PWM values/frames.
+// The size must nicely divide by flicker_resolution.
+uint8_t flicker[3000] = {255};
 
+// Adjusts the "smoothness" of fades in the flicker pattern.
+// This is done by only deciding a new random intensity every {flicker_resolution} values (like a keyframe).
+// Each value/frame between keyframes fades up / down to make it a smoother transition.
+// The duration between each frame being output is divided by {flicker_resolution} so that the overall effect speed is not changed.
+// To disable (each frame is random), set to 1.
+const int flicker_resolution = 15;
+
+// The artnet receiver class.
 ArtnetReceiver artnet;
 
 
 void setup() {
     // Set the PWM outputs we are using as outputs.
-    // PWM outputs are 2 -> 13 (11 channels)
     for (int i = 0; i<CHANNEL_COUNT; i++) {
       pinMode(PWM_PINS[i], OUTPUT);
       pinMode(RELAY_PINS[i], OUTPUT);
-      // Relays are active low, make sure they are off asap
+      // Each candle PWM output also has a separate flame that is togglable with a relay.
+      // Relays are active low, make sure they are off ASAP
       digitalWrite(RELAY_PINS[i], HIGH);
     }
-    pinMode(RELAY_FOGGER_PINS[0], OUTPUT);
-    pinMode(RELAY_FOGGER_PINS[1], OUTPUT);
-    digitalWrite(RELAY_FOGGER_PINS[0], HIGH); //OFF
-    digitalWrite(RELAY_FOGGER_PINS[1], HIGH); //OFF
+    if (ENABLE_FOGGER) {
+      pinMode(RELAY_FOGGER_PINS[0], OUTPUT);
+      pinMode(RELAY_FOGGER_PINS[1], OUTPUT);
+      digitalWrite(RELAY_FOGGER_PINS[0], HIGH); //OFF
+      digitalWrite(RELAY_FOGGER_PINS[1], HIGH); //OFF
+    }
     
     Serial.begin(115200);
 
@@ -133,14 +144,42 @@ void setup() {
     Serial.print(F("Channel Count: "));
     Serial.println(String(CHANNEL_COUNT));
 
-    Serial.println(F("Beginning Art-Net..."));
+    Serial.println(F("Beginning ArtNet..."));
     artnet.begin();
 
-    // Fill up the flicker pattern buffer, index 0 is left full, for static intensity.
-    for (int i=1; i<sizeof(flicker); i++) {
-      flicker[i] = (255-FLICKER_MAGNITUDE) + random(FLICKER_MAGNITUDE); 
+    // Fill up the flicker pattern buffer
+    
+    int last_keyframe_value = 255; // Start at 255 for full intensity.
+    // So, we want to transition between keyframes of different randomly generated brightness values (the flickering)
+    // This outer loop is for each keyframe in the flicker pattern.
+    // There is a keyframe every {flicker_resolution} regular frames
+    for (int i=0; i<sizeof(flicker)/flicker_resolution; i++) {
+      
+      Serial.print(String(i) + " / ");
+      Serial.print(String(last_keyframe_value) + " / ");
+      
+      // We are going to start transitioning to a new keyframe.
+      // Decide a random brightness this keyframe will be:
+      uint8_t new_keyframe_value = (255-FLICKER_MAGNITUDE) + random(FLICKER_MAGNITUDE); 
+      Serial.print(String(new_keyframe_value) + " / ");
+
+      // This means we will need each of our regular frames to increase by the keyframe difference divided by the number of regular frames.
+      float new_step = (float(new_keyframe_value) - float(last_keyframe_value)) / flicker_resolution;
+      Serial.println(String(new_step) + " / ");
+
+      // Now loop through and set every regular frame inbetween keyframes
+      for (int j=0; j<flicker_resolution; j++) {
+        int flicker_index = j+(i*flicker_resolution);
+        flicker[flicker_index] = last_keyframe_value + int(new_step * (j+1));
+        Serial.print(String(flicker_index) + " / ");
+        Serial.println(flicker[flicker_index]);
+      }
+      last_keyframe_value = new_keyframe_value;
+       
     }
-    // Reset everything to blank (no Art-Net yet).
+    flicker[0] = 255; // Just enforce that flicker frame 0 should be full intensity, for full static output.
+    
+    // Reset everything to blank (no ArtNet yet).
     decode_dmx();
 
 
@@ -174,7 +213,7 @@ void decode_dmx() {
      // Use sine wave to try and make the speed range visually nicer. TODO: Needs some work.
      float flicker_speed_sine = sin((float(flicker_speed_dmx)/255)*1.6);
      
-     flicker_speed_millis[channel] = max(1,flicker_max_duration - (int(float(flicker_speed_dmx*4) * flicker_speed_sine)));
+     flicker_speed_millis[channel] = max(1,(flicker_max_duration - (int(float(flicker_speed_dmx*4) * flicker_speed_sine)))/flicker_resolution);
      //Serial.println("Intensity " + String(channel) + " / " + String(intensity[channel]));
      //Serial.println("Flame Relay " + String(channel) + " / " + String(relay_state[channel]));
      //Serial.println("Flicker Speed DMX Raw:" + String(flicker_speed_dmx));
@@ -183,23 +222,25 @@ void decode_dmx() {
      //Serial.println("Flicker Speed millis " + String(channel) + " / " + String(flicker_speed_millis[channel]));
      
    }
-   // Now deal with the lovely analogue fogger relays.
-   // Channel count will give us the channel one above the top candle channel, then add the standard offset.
-   int fogger_channel_index = (CHANNEL_COUNT*3) + DMX_START_INDEX;
-   int fogger_channel_value = dmx_values[fogger_channel_index];
-   Serial.print("Fogger Channel: ");
-   Serial.println((fogger_channel_index+1));
-   Serial.print("Fogger Value: ");
-   Serial.println(fogger_channel_value);
-   if (fogger_channel_value > 200) {
-    relay_fogger_state[1] = true; // Take the 9V PSU - High Smoke
-    relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
-   } else if (fogger_channel_value > 100) {
-    relay_fogger_state[1] = false; // Take the 5V PSU - Medium smoke
-    relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
-   } else {
-    relay_fogger_state[1] = false; // Don't need either of these, just for standby.
-    relay_fogger_state[0] = false; // Take the heater only voltage.
+   if (ENABLE_FOGGER) {
+     // Now deal with the lovely analogue fogger relays.
+     // Channel count will give us the channel one above the top candle channel, then add the standard offset.
+     int fogger_channel_index = (CHANNEL_COUNT*3) + DMX_START_INDEX;
+     int fogger_channel_value = dmx_values[fogger_channel_index];
+     //Serial.print("Fogger Channel: ");
+     //Serial.println((fogger_channel_index+1));
+     //Serial.print("Fogger Value: ");
+     //Serial.println(fogger_channel_value);
+     if (fogger_channel_value > 200) {
+      relay_fogger_state[1] = true; // Take the 9V PSU - High Smoke
+      relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
+     } else if (fogger_channel_value > 100) {
+      relay_fogger_state[1] = false; // Take the 5V PSU - Medium smoke
+      relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
+     } else {
+      relay_fogger_state[1] = false; // Don't need either of these, just for standby.
+      relay_fogger_state[0] = false; // Take the heater only voltage.
+     }
    }
 }
 
@@ -210,7 +251,7 @@ void update_flicker_indexes() {
     // The last change to the flicker pattern was more than the millis count between changes at the candle's given flicker speed
     // This means we should jump this candle to the next sequence position in the flicker
     flicker_last_tick[channel] = millis();
-    if (flicker_speed_millis[channel] == flicker_max_duration) {
+    if ((flicker_speed_millis[channel]*flicker_resolution) == flicker_max_duration) {
       // DMX flicker speed is 0, stay solid
       flicker_index[channel] = 0;
     } else {
@@ -235,19 +276,9 @@ void loop() {
     //analogWrite(PWM_PINS[channel], flicker[flicker_index[channel]]); # Just flicker
     analogWrite(PWM_PINS[channel], float(flicker[flicker_index[channel]])*(float(intensity[channel]))/255);
     digitalWrite(RELAY_PINS[channel], !relay_state[channel]);
-    //if (intensity[channel] == 0) {
-    //  Serial.print(PWM_PINS[channel]);
-    //  Serial.println(" now input");
-    //    digitalWrite(PWM_PINS[channel], 1);
-    //} else {
-    //  pinMode(PWM_PINS[channel], OUTPUT);
-    //  digitalWrite(PWM_PINS[channel], 0);
-    //    digitalWrite(PWM_PINS[channel], 0);
-    //}
   }
-  digitalWrite(RELAY_FOGGER_PINS[0], !relay_fogger_state[0]);
-  digitalWrite(RELAY_FOGGER_PINS[1], !relay_fogger_state[1]);
-  
-
-  //delay(random(100));
+  if (ENABLE_FOGGER) {
+    digitalWrite(RELAY_FOGGER_PINS[0], !relay_fogger_state[0]);
+    digitalWrite(RELAY_FOGGER_PINS[1], !relay_fogger_state[1]);
+  }
 }
