@@ -7,9 +7,11 @@
 
 // How to use: Configure IP address, number of channels, DMX/Artnet Universe, DMX channel offset 
 
-
+// https://github.com/hideakitai/ArtNet 0.2.12
+// Ethernet 2.02
 // INCLUDES
 
+#include<avr/wdt.h> /* Header for watchdog timers in AVR */
 #include <ArtnetEther.h>
 
 
@@ -118,6 +120,8 @@ void setup() {
     
     Serial.begin(115200);
 
+    wdt_disable();  /* Disable the watchdog and wait for more than 2 seconds */
+
     Serial.println(F("Welcome to Candelabra!"));
     Serial.println(F("Setting up ethernet..."));
     Ethernet.init(ETHERNET_CS_PIN);
@@ -143,6 +147,9 @@ void setup() {
     Serial.println(String(DMX_START_ADDR)); 
     Serial.print(F("Channel Count: "));
     Serial.println(String(CHANNEL_COUNT));
+
+    delay(3000);  /* Done so that the Arduino doesn't keep resetting infinitely in case of wrong configuration */
+    wdt_enable(WDTO_2S);  /* Enable the watchdog with a timeout of 2 seconds */
 
     Serial.println(F("Beginning ArtNet..."));
     artnet.begin();
@@ -198,6 +205,8 @@ void setup() {
         }
         // Now turn that into params for the candles.
         decode_dmx();
+
+        wdt_reset(); /*Reset the watchdog, we received artnet and processed it.*/
     });
 }
 
