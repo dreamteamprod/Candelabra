@@ -229,64 +229,63 @@ void setup() {
 
 // Takes the DMX raw universe and turns that into candle intensities and flicker speeds.
 void decode_dmx() {
-   for (int channel = 0; channel<(CHANNEL_COUNT); channel++) {
-     // DMX channel layout is 1 for intensity of candle 1, 2 for flicker speed of candle 1 etc...
-     intensity[channel] = dmx_values[(channel*3) + DMX_START_INDEX];
-     int flicker_speed_dmx = dmx_values[(channel*3) + 1 + DMX_START_INDEX];
-     // Turn into boolean.
-     relay_state[channel] = bool(dmx_values[(channel*3) + 2 + DMX_START_INDEX]);
+  for (int channel = 0; channel<(CHANNEL_COUNT); channel++) {
+    // DMX channel layout is 1 for intensity of candle 1, 2 for flicker speed of candle 1 etc...
+    intensity[channel] = dmx_values[(channel*3) + DMX_START_INDEX];
+    int flicker_speed_dmx = dmx_values[(channel*3) + 1 + DMX_START_INDEX];
+    // Turn into boolean.
+    relay_state[channel] = bool(dmx_values[(channel*3) + 2 + DMX_START_INDEX]);
 
-     // Use sine wave to try and make the speed range visually nicer. TODO: Needs some work.
-     float flicker_speed_sine = sin((float(flicker_speed_dmx)/255)*1.6);
+    // Use sine wave to try and make the speed range visually nicer. TODO: Needs some work.
+    float flicker_speed_sine = sin((float(flicker_speed_dmx)/255)*1.6);
 
-     flicker_speed_millis[channel] = max(1,(flicker_max_duration - (int(float(flicker_speed_dmx*4) * flicker_speed_sine)))/flicker_resolution);
-     //Serial.println("Intensity " + String(channel) + " / " + String(intensity[channel]));
-     //Serial.println("Flame Relay " + String(channel) + " / " + String(relay_state[channel]));
-     //Serial.println("Flicker Speed DMX Raw:" + String(flicker_speed_dmx));
-     //Serial.println("Flicker Speed DMX sine multiplier:" + String(flicker_speed_sine));
+    flicker_speed_millis[channel] = max(1,(flicker_max_duration - (int(float(flicker_speed_dmx*4) * flicker_speed_sine)))/flicker_resolution);
+    //Serial.println("Intensity " + String(channel) + " / " + String(intensity[channel]));
+    //Serial.println("Flame Relay " + String(channel) + " / " + String(relay_state[channel]));
+    //Serial.println("Flicker Speed DMX Raw:" + String(flicker_speed_dmx));
+    //Serial.println("Flicker Speed DMX sine multiplier:" + String(flicker_speed_sine));
 
-     //Serial.println("Flicker Speed millis " + String(channel) + " / " + String(flicker_speed_millis[channel]));
+    //Serial.println("Flicker Speed millis " + String(channel) + " / " + String(flicker_speed_millis[channel]));
 
-   }
-   if (ENABLE_FOGGER) {
-     // Now deal with the lovely analogue fogger relays.
-     // Channel count will give us the channel one above the top candle channel, then add the standard offset.
-     int fogger_channel_index = (CHANNEL_COUNT*3) + DMX_START_INDEX;
-     int fogger_channel_value = dmx_values[fogger_channel_index];
-     //Serial.print("Fogger Channel: ");
-     //Serial.println((fogger_channel_index+1));
-     //Serial.print("Fogger Value: ");
-     //Serial.println(fogger_channel_value);
-     if (fogger_channel_value > 200) {
+  }
+  if (ENABLE_FOGGER) {
+    // Now deal with the lovely analogue fogger relays.
+    // Channel count will give us the channel one above the top candle channel, then add the standard offset.
+    int fogger_channel_index = (CHANNEL_COUNT*3) + DMX_START_INDEX;
+    int fogger_channel_value = dmx_values[fogger_channel_index];
+    //Serial.print("Fogger Channel: ");
+    //Serial.println((fogger_channel_index+1));
+    //Serial.print("Fogger Value: ");
+    //Serial.println(fogger_channel_value);
+    if (fogger_channel_value > 200) {
       relay_fogger_state[1] = true; // Take the 9V PSU - High Smoke
       relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
-     } else if (fogger_channel_value > 100) {
+    } else if (fogger_channel_value > 100) {
       relay_fogger_state[1] = false; // Take the 5V PSU - Medium smoke
       relay_fogger_state[0] = true; // Take the higher voltage PSU relay.
-     } else {
+    } else {
       relay_fogger_state[1] = false; // Don't need either of these, just for standby.
       relay_fogger_state[0] = false; // Take the heater only voltage.
-     }
-   }
+    }
+  }
 }
 
 // Works out when to progress the flicker on each candle depending on its speed.
 void update_flicker_indexes() {
- for (int channel = 0; channel<(CHANNEL_COUNT); channel++) {
-  if (flicker_last_tick[channel] + flicker_speed_millis[channel] < millis()) {
-    // The last change to the flicker pattern was more than the millis count between changes at the candle's given flicker speed
-    // This means we should jump this candle to the next sequence position in the flicker
-    flicker_last_tick[channel] = millis();
-    if ((flicker_speed_millis[channel]*flicker_resolution) == flicker_max_duration) {
-      // DMX flicker speed is 0, stay solid
-      flicker_index[channel] = 0;
-    } else {
-      // Add 1 to the flicker index, mod to wrap around once ended flicker pattern.
-      flicker_index[channel] = (flicker_index[channel] + 1) % (sizeof(flicker)/sizeof(flicker[0]));
+  for (int channel = 0; channel<(CHANNEL_COUNT); channel++) {
+    if (flicker_last_tick[channel] + flicker_speed_millis[channel] < millis()) {
+      // The last change to the flicker pattern was more than the millis count between changes at the candle's given flicker speed
+      // This means we should jump this candle to the next sequence position in the flicker
+      flicker_last_tick[channel] = millis();
+      if ((flicker_speed_millis[channel]*flicker_resolution) == flicker_max_duration) {
+        // DMX flicker speed is 0, stay solid
+        flicker_index[channel] = 0;
+      } else {
+        // Add 1 to the flicker index, mod to wrap around once ended flicker pattern.
+        flicker_index[channel] = (flicker_index[channel] + 1) % (sizeof(flicker)/sizeof(flicker[0]));
+      }
     }
   }
-
- }
 }
 
 
