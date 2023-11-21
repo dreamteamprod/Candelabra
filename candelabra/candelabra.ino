@@ -34,9 +34,11 @@ const int DMX_START_ADDR = 1;
 // The DMX Art-Net universe number
 uint32_t DMX_UNIVERSE = 1;  // 0 - 15
 
-// Ethernet IP Address
-const IPAddress IPADDRESS(192, 168, 2, 222);
-uint8_t MACADDRESS[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xAB};
+// Ethernet IP Address or use DHCP
+#define USE_DHCP true;
+const IPAddress IPADDRESS(192, 168, 1, 222);
+// Make sure this is a valid MAC addr, otherwise unicast ArtNet doesn't work
+byte MACADDRESS[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
 
 // PWM Candle LED Output Pins  # NOTE 47 is not a PWM pin, results will vary.
 const int PWM_PINS[] = {2,3,4,5,6,7,8,9,10,11,12,13,44,45,46,47};
@@ -101,7 +103,23 @@ const int flicker_resolution = 15;
 // The artnet receiver class.
 ArtnetReceiver artnet;
 
+void(* resetArduino) (void) = 0;  // declare reset fuction at address 0
 
+void print_ethernet_status() {
+
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println(F("Ethernet board was not found.  Sorry, can't run without hardware. :("));
+    delay(1000);
+    resetArduino();
+
+  } else if (Ethernet.linkStatus() != LinkON) {
+    Serial.println(F("Ethernet cable is not detected."));
+    delay(1000);
+    resetArduino();
+  }
+  Serial.print("IP Address: ");
+  Serial.println(Ethernet.localIP());
+}
 void setup() {
     // Set the PWM outputs we are using as outputs.
     for (int i = 0; i<CHANNEL_COUNT; i++) {
@@ -125,22 +143,17 @@ void setup() {
     Serial.println(F("Welcome to Candelabra!"));
     Serial.println(F("Setting up ethernet..."));
     Ethernet.init(ETHERNET_CS_PIN);
-    Ethernet.begin(MACADDRESS, IPADDRESS);
-
-    // Check for Ethernet hardware present
-    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-      Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-      while (true) {
-        delay(1); // do nothing, no point running without Ethernet hardware
-      }
-    }
-    if (Ethernet.linkStatus() == LinkOFF) {
-      Serial.println("Ethernet cable is not connected.");
-    }
-  
-    Serial.print("IP Address (Static): ");
-    Serial.println(Ethernet.localIP());
-
+    #ifdef USE_DHCP
+      Serial.println(F("Trying with DHCP"));
+      if (Ethernet.begin(MACADDRESS) == 0) {
+        Serial.println(F("Failed to configure Ethernet using DHCP"));
+      };
+    #else
+      Serial.println(F("Trying with STATIC IP"));
+      Ethernet.begin(MACADDRESS, IPADDRESS);
+    #endif
+    print_ethernet_status();
+ 
     Serial.print(F("DMX Universe: "));
     Serial.println(String(DMX_UNIVERSE));
     Serial.print(F("DMX Start Channel: "));
@@ -290,4 +303,32 @@ void loop() {
     digitalWrite(RELAY_FOGGER_PINS[0], !relay_fogger_state[0]);
     digitalWrite(RELAY_FOGGER_PINS[1], !relay_fogger_state[1]);
   }
+
+  #ifdef USE_DHCP
+  // Handle DHCP Lease Expiry
+  switch (Ethernet.maintain()) {
+    case 1:
+      //renewed fail
+      Serial.println("Error: renewed fail");
+      break;
+    case 2:
+      //renewed success
+      Serial.println(F("Renewed success"));
+      Serial.print(F("DHCP lease renewed, got IP address: "));
+      Serial.println(Ethernet.localIP());
+      break;
+    case 3:
+      //rebind fail
+      Serial.println(F("Error: DHCP rebind fail"));
+      break;
+    case 4:
+      //rebind success
+      Serial.print(F("DHCP Rebind success, got IP address: "));
+      Serial.println(Ethernet.localIP());
+      break;
+    default:
+      //nothing happened
+      break;
+  }
+  #endif
 }
