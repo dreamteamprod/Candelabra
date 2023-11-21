@@ -16,6 +16,7 @@
 
 
 
+
 // CONFIG OPTIONS
 
 // Number of candle DMX outputs supported.
@@ -32,12 +33,11 @@ const int DMX_UNIVERSE_SIZE = 512;
 const int DMX_START_ADDR = 1;
 
 // The DMX Art-Net universe number
-uint32_t DMX_UNIVERSE = 1;  // 0 - 15
+uint32_t DMX_UNIVERSE = 5;  // 0 - 15
 
 // Ethernet IP Address or use DHCP
 #define USE_DHCP true;
 const IPAddress IPADDRESS(192, 168, 1, 222);
-// Make sure this is a valid MAC addr, otherwise unicast ArtNet doesn't work
 byte MACADDRESS[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
 
 // PWM Candle LED Output Pins  # NOTE 47 is not a PWM pin, results will vary.
@@ -47,7 +47,7 @@ const int PWM_PINS[] = {2,3,4,5,6,7,8,9,10,11,12,13,44,45,46,47};
 const int RELAY_PINS[] = {22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37};
 
 // To support an old Martin Fogger with voltage control, we have a relay ladder connected to 3 power supply voltages.
-const bool ENABLE_FOGGER = true;
+const bool ENABLE_FOGGER = false;
 const int RELAY_FOGGER_PINS[] = {36,37};
 
 // Ethernet Chip Select Pin
@@ -166,6 +166,9 @@ void setup() {
 
     Serial.println(F("Beginning ArtNet..."));
     artnet.begin();
+    artnet.shortname(F("Candelabra"));
+    artnet.longname(F("Dream Team Candelabra"));
+    artnet.nodereport(String("Configured ") + CHANNEL_COUNT + String(" candles on Universe ") + DMX_UNIVERSE + String(" with DMX start address ") + DMX_START_ADDR);
 
     // Fill up the flicker pattern buffer
     
@@ -175,24 +178,24 @@ void setup() {
     // There is a keyframe every {flicker_resolution} regular frames
     for (int i=0; i<sizeof(flicker)/flicker_resolution; i++) {
       
-      Serial.print(String(i) + " / ");
-      Serial.print(String(last_keyframe_value) + " / ");
+      //Serial.print(String(i) + " / ");
+      //Serial.print(String(last_keyframe_value) + " / ");
       
       // We are going to start transitioning to a new keyframe.
       // Decide a random brightness this keyframe will be:
       uint8_t new_keyframe_value = (255-FLICKER_MAGNITUDE) + random(FLICKER_MAGNITUDE); 
-      Serial.print(String(new_keyframe_value) + " / ");
+      //Serial.print(String(new_keyframe_value) + " / ");
 
       // This means we will need each of our regular frames to increase by the keyframe difference divided by the number of regular frames.
       float new_step = (float(new_keyframe_value) - float(last_keyframe_value)) / flicker_resolution;
-      Serial.println(String(new_step) + " / ");
+      //Serial.println(String(new_step) + " / ");
 
       // Now loop through and set every regular frame inbetween keyframes
       for (int j=0; j<flicker_resolution; j++) {
         int flicker_index = j+(i*flicker_resolution);
         flicker[flicker_index] = last_keyframe_value + int(new_step * (j+1));
-        Serial.print(String(flicker_index) + " / ");
-        Serial.println(flicker[flicker_index]);
+        //Serial.print(String(flicker_index) + " / ");
+        //Serial.println(flicker[flicker_index]);
       }
       last_keyframe_value = new_keyframe_value;
        
@@ -206,11 +209,12 @@ void setup() {
     // if Artnet packet comes to this universe, this function is called
     // Put universe data into our local dmx_values buffer.
     artnet.subscribe(DMX_UNIVERSE, [&](const uint8_t* data, const uint16_t size) {
-        Serial.print("artnet data (universe : ");
-        Serial.print(DMX_UNIVERSE);
-        Serial.print(", size = ");
-        Serial.print(size);
-        Serial.println(") :");
+        //Serial.print("artnet data (universe : ");
+        //Serial.print(DMX_UNIVERSE);
+        //Serial.print(", size = ");
+        //Serial.print(size);
+        //Serial.println(") :");
+        Serial.println("*");
         for (int channel; channel<DMX_UNIVERSE_SIZE; channel++) {
           // If universe is somehow smaller than 512, don't try and read more channels than available.
           if (channel >= size) break;
