@@ -5,7 +5,7 @@
 
 // TODO: Make channels -> candles to reduce confusion with DMX channels
 
-// How to use: Configure IP address, number of channels, DMX/Artnet Universe, DMX channel offset 
+// How to use: Configure IP address, number of channels, DMX/Artnet Universe, DMX channel offset
 
 // https://github.com/hideakitai/ArtNet 0.2.12
 // Ethernet 2.02
@@ -13,7 +13,6 @@
 
 #include<avr/wdt.h> /* Header for watchdog timers in AVR */
 #include <ArtnetEther.h>
-
 
 
 
@@ -38,6 +37,7 @@ uint32_t DMX_UNIVERSE = 5;  // 0 - 15
 // Ethernet IP Address or use DHCP
 #define USE_DHCP true;
 const IPAddress IPADDRESS(192, 168, 1, 222);
+// Make sure this is a valid MAC addr, otherwise unicast ArtNet doesn't work
 byte MACADDRESS[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02};
 
 // PWM Candle LED Output Pins  # NOTE 47 is not a PWM pin, results will vary.
@@ -135,7 +135,7 @@ void setup() {
       digitalWrite(RELAY_FOGGER_PINS[0], HIGH); //OFF
       digitalWrite(RELAY_FOGGER_PINS[1], HIGH); //OFF
     }
-    
+
     Serial.begin(115200);
 
     wdt_disable();  /* Disable the watchdog and wait for more than 2 seconds */
@@ -153,11 +153,11 @@ void setup() {
       Ethernet.begin(MACADDRESS, IPADDRESS);
     #endif
     print_ethernet_status();
- 
+
     Serial.print(F("DMX Universe: "));
     Serial.println(String(DMX_UNIVERSE));
     Serial.print(F("DMX Start Channel: "));
-    Serial.println(String(DMX_START_ADDR)); 
+    Serial.println(String(DMX_START_ADDR));
     Serial.print(F("Channel Count: "));
     Serial.println(String(CHANNEL_COUNT));
 
@@ -171,19 +171,19 @@ void setup() {
     artnet.nodereport(String("Configured ") + CHANNEL_COUNT + String(" candles on Universe ") + DMX_UNIVERSE + String(" with DMX start address ") + DMX_START_ADDR);
 
     // Fill up the flicker pattern buffer
-    
+
     int last_keyframe_value = 255; // Start at 255 for full intensity.
     // So, we want to transition between keyframes of different randomly generated brightness values (the flickering)
     // This outer loop is for each keyframe in the flicker pattern.
     // There is a keyframe every {flicker_resolution} regular frames
     for (int i=0; i<sizeof(flicker)/flicker_resolution; i++) {
-      
+
       //Serial.print(String(i) + " / ");
       //Serial.print(String(last_keyframe_value) + " / ");
-      
+
       // We are going to start transitioning to a new keyframe.
       // Decide a random brightness this keyframe will be:
-      uint8_t new_keyframe_value = (255-FLICKER_MAGNITUDE) + random(FLICKER_MAGNITUDE); 
+      uint8_t new_keyframe_value = (255-FLICKER_MAGNITUDE) + random(FLICKER_MAGNITUDE);
       //Serial.print(String(new_keyframe_value) + " / ");
 
       // This means we will need each of our regular frames to increase by the keyframe difference divided by the number of regular frames.
@@ -198,10 +198,10 @@ void setup() {
         //Serial.println(flicker[flicker_index]);
       }
       last_keyframe_value = new_keyframe_value;
-       
+
     }
     flicker[0] = 255; // Just enforce that flicker frame 0 should be full intensity, for full static output.
-    
+
     // Reset everything to blank (no ArtNet yet).
     decode_dmx();
 
@@ -235,18 +235,18 @@ void decode_dmx() {
      int flicker_speed_dmx = dmx_values[(channel*3) + 1 + DMX_START_INDEX];
      // Turn into boolean.
      relay_state[channel] = bool(dmx_values[(channel*3) + 2 + DMX_START_INDEX]);
-  
+
      // Use sine wave to try and make the speed range visually nicer. TODO: Needs some work.
      float flicker_speed_sine = sin((float(flicker_speed_dmx)/255)*1.6);
-     
+
      flicker_speed_millis[channel] = max(1,(flicker_max_duration - (int(float(flicker_speed_dmx*4) * flicker_speed_sine)))/flicker_resolution);
      //Serial.println("Intensity " + String(channel) + " / " + String(intensity[channel]));
      //Serial.println("Flame Relay " + String(channel) + " / " + String(relay_state[channel]));
      //Serial.println("Flicker Speed DMX Raw:" + String(flicker_speed_dmx));
      //Serial.println("Flicker Speed DMX sine multiplier:" + String(flicker_speed_sine));
-     
+
      //Serial.println("Flicker Speed millis " + String(channel) + " / " + String(flicker_speed_millis[channel]));
-     
+
    }
    if (ENABLE_FOGGER) {
      // Now deal with the lovely analogue fogger relays.
@@ -282,10 +282,10 @@ void update_flicker_indexes() {
       flicker_index[channel] = 0;
     } else {
       // Add 1 to the flicker index, mod to wrap around once ended flicker pattern.
-      flicker_index[channel] = (flicker_index[channel] + 1) % (sizeof(flicker)/sizeof(flicker[0]));     
+      flicker_index[channel] = (flicker_index[channel] + 1) % (sizeof(flicker)/sizeof(flicker[0]));
     }
   }
-  
+
  }
 }
 
